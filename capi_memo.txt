@@ -1,0 +1,205 @@
+sudo apt install git openssh-server
+sudo vi /etc/netplan/01-netcfg.yaml
+
+<
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    enp0s3:
+      dhcp4: yes
+    enp0s8:
+      dhcp4: no
+      dhcp6: no
+      addresses: [192.168.56.51/24]
+    enp0s9:
+      dhcp4: no
+      dhcp6: no
+      addresses: [193.168.56.51/24]
+>
+sudo netplan apply
+
+git config --global user.name user
+git config --global user.email user@user.com
+#git config --global http.proxy http://aaa:8080
+#git config --global https.proxy http://aaa:8080
+
+
+#sudo vi /etc/wgetrc
+#http_proxy=http://aaa:8080/
+#https_proxy=http://aaa:8080/
+
+sudo route add -host 224.244.224.245 dev enp0s9
+
+
+
+
+sudo apt install cmake cmake-qt-gui libexpat-dev expat default-jre g++ libboost-dev libboost-tools-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev libboost-log-dev pkg-config unzip net-tools zlib1g-dev libdbus-glib-1-dev
+
+
+mkdir -p workspace/commonapi
+cd workspace/commonapi
+wget https://github.com/COVESA/capicxx-core-tools/releases/download/3.2.0.1/commonapi_core_generator.zip
+wget https://github.com/COVESA/capicxx-someip-tools/releases/download/3.2.0.1/commonapi_someip_generator.zip
+
+unzip commonapi_core_generator.zip -d ./commonapi_core_generator
+unzip commonapi_someip_generator.zip -d ./commonapi_someip_generator
+
+chmod +x ./commonapi_core_generator/commonapi-core-generator-linux-x86_64
+chmod +x ./commonapi_someip_generator/commonapi-someip-generator-linux-x86_64
+
+rm commonapi_core_generator.zip commonapi_someip_generator.zip
+
+git clone https://github.com/GENIVI/capicxx-core-runtime.git
+cd capicxx-core-runtime/
+mkdir build
+cd build
+cmake ..
+make
+sudo make install
+sudo ldconfig
+
+cd ../..
+git clone https://github.com/GENIVI/capicxx-someip-runtime.git
+git clone https://github.com/GENIVI/vsomeip.git
+
+cd vsomeip
+mkdir build
+cd build
+cmake -DENABLE_SIGNAL_HANDLING=1 -DDIAGNOSIS_ADDRESS=0x10 ..
+make
+sudo make install
+sudo ldconfig
+
+cd ../..
+cd capicxx-someip-runtime
+mkdir build
+cd build
+cmake -DUSE_INSTALLED_COMMONAPI=OFF ..
+make
+sudo make install
+sudo ldconfig
+
+cd ../..
+git clone https://github.com/COVESA/capicxx-core-tools.git
+cd capicxx-core-tools/CommonAPI-Examples/E01HelloWorld
+mkdir build
+mkdir src-gen
+mkdir src-gen/someip
+
+~/workspace/commonapi/commonapi_core_generator/commonapi-core-generator-linux-x86_64 -sk ./fidl/E01HelloWorld.fidl
+~/workspace/commonapi/commonapi_someip_generator/commonapi-someip-generator-linux-x86_64 ./fidl/E01HelloWorld-SomeIP.fdepl
+mv ./src-gen/v0 ./src-gen/someip/
+
+cd build
+cmake -DUSE_INSTALLED_COMMONAPI=OFF ..
+
+
+cd ../../../../../
+mkdir dlt
+cd dlt
+git clone --depth=1 --branch=v2.18.8 http://github.com/GENIVI/dlt-daemon.git
+cd dlt-daemon/
+mkdir build
+cd build/
+cmake ..
+make
+sudo make install
+sudo ldconfig
+
+[make ini]
+
+/etc/commonapi.ini
+<
+[default]
+binding=someip
+
+[logging]
+console = true
+file = ./mylog.log
+dlt = false
+level = verbose
+>
+
+[generate fidl/fdepl]
+<
+export LD_LIBRARY_PATH=/home/[x]/workspace/commonapi/capicxx-core-runtime/build:/home/[x]/workspace/commonapi/capicxx-someip-runtime/build:/home/[x]/workspace/commonapi/vsomeip/build:$LD_LIBRARY_PATH
+export VSOMEIP_CONFIGURATION=vsomeip-service.json
+export VSOMEIP_APPLICATION_NAME=service-sample
+./E01HelloWorldService
+
+
+export VSOMEIP_CONFIGURATION=vsomeip-client.json
+export VSOMEIP_APPLICATION_NAME=client-sample
+./E01HelloWorldClient
+
+*set own ip to     "unicast" : "192.168.11.81",
+vsomeip-service.json
+
+{
+    "unicast" : "192.168.11.80",
+    "logging" :
+    {
+        "level" : "debug",
+        "console" : "true",
+        "file" : { "enable" : "false", "path" : "/var/log/vsomeip.log" },
+        "dlt" : "false"
+    },
+    "applications" :
+    [
+        {
+            "name" : "service-sample",
+            "id" : "0x1277"
+        }
+    ],
+    "services" :
+    [
+        {
+            "service" : "0x1234",
+            "instance" : "0x5678",
+            "reliable" : { "port" : "30509", "enable-magic-cookies" : "false" },
+            "unreliable" : "31000"
+        }
+    ],
+    "routing" : "service-sample",
+    "service-discovery" :
+    {
+        "enable" : "true",
+        "multicast" : "224.244.224.245",
+        "port" : "30490",
+        "protocol" : "udp"
+    }
+}
+
+
+
+
+*set own ip to     "unicast" : "192.168.11.81",
+vsomeip-client.json
+
+{
+    "unicast" : "192.168.11.81",
+    "netmask" : "255.255.255.0",
+    "logging" : 
+    {
+        "level" : "debug",
+        "console" : "true",
+        "file" : { "enable" : "true", "path" : "/var/log/vsomeip.log" },
+        "dlt" : "true"
+    },
+    "applications" :
+    [
+        {
+            "name" : "client-sample",
+            "id" : "0x1343"
+        }
+    ],
+    "routing" : "client-sample",
+    "service-discovery" :
+    {
+        "enable" : "true",
+        "multicast" : "224.244.224.245",
+        "port" : "30490",
+        "protocol" : "udp"
+    }
+}
